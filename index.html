@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>Wet Ink Lines (v1)</title>
+<title>Wet Ink Lines (v2)</title>
 <style>
   :root {
     --bg: #0f1115;
@@ -183,6 +183,9 @@
   document.querySelectorAll('.nav a').forEach(a => {
     if (a.dataset.v === view) a.classList.add('active');
   });
+
+  const viewLabels = { submit: 'Submit', live: 'Live', admin: 'Admin' };
+  document.title = 'Lines - ' + (viewLabels[view] || 'Submit');
 
   const appEl = document.getElementById('app');
 
