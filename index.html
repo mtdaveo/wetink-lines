@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>Wet Ink Lines (v2)</title>
+<title>Wet Ink Lines (v3)</title>
 <style>
   :root {
     --bg: #0f1115;
@@ -24,6 +24,7 @@
   }
   .wrap { max-width: 720px; margin: 0 auto; padding: 24px 20px 60px; }
   .wrap.live { max-width: 1100px; }
+  .wrap.admin { max-width: 1000px; }
   h1 { font-size: 1.3rem; margin: 0 0 4px; }
   .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 20px; }
   .card {
@@ -90,6 +91,11 @@
   }
 
   /* admin */
+  .admin-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 8px;
+  }
   .admin-row {
     display: flex;
     align-items: center;
@@ -99,7 +105,6 @@
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 10px 14px;
-    margin-bottom: 8px;
   }
   .admin-row.hidden-row { opacity: 0.5; }
   .admin-row .txt { flex: 1; }
@@ -359,6 +364,7 @@
 
   async function renderAdminPanel(user) {
     const cfg = await loadConfigOnce();
+    document.getElementById('wrap').classList.add('admin');
     appEl.innerHTML = `
       <h1>Admin <span class="count-badge" id="countBadge">0</span></h1>
       <div class="sub">Signed in as ${escapeHtml(user.email)} &middot; <a class="linklike" id="signOutLink" href="#">Sign out</a></div>
@@ -408,6 +414,8 @@
         listCard.innerHTML = `<div class="tiny">No submissions yet.</div>`;
         return;
       }
+      const grid = document.createElement('div');
+      grid.className = 'admin-grid';
       snap.forEach(docSnap => {
         const d = docSnap.data();
         const row = document.createElement('div');
@@ -425,8 +433,9 @@
             alert("Couldn't update — check connection.");
           }
         });
-        listCard.appendChild(row);
+        grid.appendChild(row);
       });
+      listCard.appendChild(grid);
     }, (err) => {
       console.error(err);
       listCard.innerHTML = `<div class="status err">Couldn't load list — check connection.</div>`;
