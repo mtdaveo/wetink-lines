@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Wet Ink Lines (v1)</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #1a1d24;
+    --panel2: #22262f;
+    --text: #eef0f3;
+    --muted: #9aa1ac;
+    --accent: #5b8cff;
+    --accent2: #7fd1a8;
+    --danger: #ff6b6b;
+    --border: #2c313c;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 24px 20px 60px; }
+  .wrap.live { max-width: 1100px; }
+  h1 { font-size: 1.3rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 20px; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px;
+    margin-bottom: 14px;
+  }
+  textarea, input[type=text], input[type=email], input[type=password] {
+    width: 100%;
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 1rem;
+    resize: none;
+  }
+  textarea:focus, input:focus { outline: 2px solid var(--accent); }
+  button {
+    appearance: none;
+    border: none;
+    border-radius: 10px;
+    padding: 12px 18px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button.primary { background: var(--accent); color: #fff; }
+  button.primary:disabled { background: #3a4150; color: #888; cursor: not-allowed; }
+  button.ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  button.hide-btn { background: #3a2020; color: var(--danger); }
+  button.restore-btn { background: #203a2a; color: var(--accent2); }
+  .row { display: flex; gap: 10px; margin-top: 10px; }
+  .status { min-height: 22px; font-size: 0.9rem; color: var(--accent2); margin-top: 8px; }
+  .status.err { color: var(--danger); }
+  .charcount { text-align: right; font-size: 0.8rem; color: var(--muted); margin-top: 4px; }
+
+  /* live view */
+  .line-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px;
+    margin-top: 10px;
+  }
+  .line-tile {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--accent);
+    border-radius: 10px;
+    padding: 14px 16px;
+    font-size: 1.15rem;
+    line-height: 1.35;
+  }
+  .count-badge {
+    display: inline-block;
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 4px 14px;
+    font-size: 0.9rem;
+    color: var(--muted);
+  }
+
+  /* admin */
+  .admin-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+  }
+  .admin-row.hidden-row { opacity: 0.5; }
+  .admin-row .txt { flex: 1; }
+  .admin-row .txt s { color: var(--muted); }
+  .tiny { font-size: 0.78rem; color: var(--muted); }
+  a.linklike { color: var(--accent); text-decoration: none; }
+  .nav { display:flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
+  .nav a {
+    font-size: 0.8rem; color: var(--muted); text-decoration: none;
+    border: 1px solid var(--border); border-radius: 999px; padding: 4px 12px;
+  }
+  .nav a.active { color: var(--text); border-color: var(--accent); }
+  #configWarning {
+    background: #3a2020; border: 1px solid var(--danger); color: #ffd0d0;
+    padding: 14px; border-radius: 10px; margin-bottom: 16px; font-size: 0.9rem;
+  }
+</style>
+</head>
+<body>
+<div class="wrap" id="wrap">
+  <div class="nav">
+    <a href="?view=submit" data-v="submit">Submit</a>
+    <a href="?view=live" data-v="live">Live List</a>
+    <a href="?view=admin" data-v="admin">Admin</a>
+  </div>
+  <div id="configWarning" style="display:none">
+    Firebase config not set yet. Edit the <code>firebaseConfig</code> object near the top of this file's script
+    and re-save before hosting for real use.
+  </div>
+  <div id="app">Loading…</div>
+</div>
+
+<!-- Firebase SDK (modular, via CDN) -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import {
+    getFirestore, collection, addDoc, onSnapshot, doc, updateDoc,
+    serverTimestamp, query, orderBy, where, setDoc, getDoc
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import {
+    getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+  // ------------------------------------------------------------------
+  // FILL THIS IN: paste your Firebase project's web config here.
+  // Firebase console > Project settings > General > Your apps > Web app > SDK setup
+  // ------------------------------------------------------------------
+  const firebaseConfig = {
+    apiKey: "AIzaSyCqWWuZmp4QdptScVye0Zu7HLnYNN8Kk7M",
+    authDomain: "wet-ink-lines.firebaseapp.com",
+    projectId: "wet-ink-lines",
+    storageBucket: "wet-ink-lines.firebasestorage.app",
+    messagingSenderId: "203189938813",
+    appId: "1:203189938813:web:c390394dc847bbcdc21f14"
+  };
+  // ------------------------------------------------------------------
+
+  const COLLECTION_NAME = "wetink_lines_2027"; // bump the year each festival
+  const CONFIG_COLLECTION = "wetink_config";
+  const CONFIG_DOC_ID = "2027"; // keep in step with the year above
+
+  const DEFAULT_EVENT_NAME = "Wet Ink";
+  const DEFAULT_EVENT_SUB = "Send us your favorite line from the scene";
+
+  const configIsPlaceholder = Object.values(firebaseConfig).some(v => String(v).includes("PASTE_ME"));
+  if (configIsPlaceholder) {
+    document.getElementById('configWarning').style.display = 'block';
+  }
+
+  let app, db, auth;
+  try {
+    app = initializeApp(firebaseConfig);
+    db = getFirestore(app);
+    auth = getAuth(app);
+  } catch (e) {
+    console.error("Firebase init failed", e);
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const view = params.get('view') || 'submit';
+  document.querySelectorAll('.nav a').forEach(a => {
+    if (a.dataset.v === view) a.classList.add('active');
+  });
+
+  const appEl = document.getElementById('app');
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function configDocRef() {
+    return doc(db, CONFIG_COLLECTION, CONFIG_DOC_ID);
+  }
+
+  // Fetch config once (for pages that just need to render a title/subtitle)
+  async function loadConfigOnce() {
+    try {
+      const snap = await getDoc(configDocRef());
+      if (snap.exists()) {
+        const d = snap.data();
+        return {
+          eventName: d.eventName || DEFAULT_EVENT_NAME,
+          eventSub: d.eventSub || DEFAULT_EVENT_SUB
+        };
+      }
+    } catch (e) {
+      console.error("Config load failed", e);
+    }
+    return { eventName: DEFAULT_EVENT_NAME, eventSub: DEFAULT_EVENT_SUB };
+  }
+
+  // Live-subscribe to config (for pages open a long time, e.g. the projector)
+  function subscribeConfig(callback) {
+    return onSnapshot(configDocRef(), (snap) => {
+      if (snap.exists()) {
+        const d = snap.data();
+        callback({
+          eventName: d.eventName || DEFAULT_EVENT_NAME,
+          eventSub: d.eventSub || DEFAULT_EVENT_SUB
+        });
+      } else {
+        callback({ eventName: DEFAULT_EVENT_NAME, eventSub: DEFAULT_EVENT_SUB });
+      }
+    }, (err) => console.error("Config subscribe failed", err));
+  }
+
+  // ================= SUBMIT VIEW =================
+  async function renderSubmit() {
+    const cfg = await loadConfigOnce();
+    appEl.innerHTML = `
+      <h1>${escapeHtml(cfg.eventName)}</h1>
+      <div class="sub">${escapeHtml(cfg.eventSub)}</div>
+      <div class="card">
+        <textarea id="lineInput" rows="3" maxlength="200" placeholder="Type the line here…"></textarea>
+        <div class="charcount"><span id="cc">0</span>/200</div>
+        <div class="row">
+          <button class="primary" id="sendBtn">Send it</button>
+        </div>
+        <div class="status" id="statusMsg"></div>
+      </div>
+    `;
+    const input = document.getElementById('lineInput');
+    const cc = document.getElementById('cc');
+    const btn = document.getElementById('sendBtn');
+    const statusMsg = document.getElementById('statusMsg');
+
+    input.addEventListener('input', () => { cc.textContent = input.value.length; });
+
+    btn.addEventListener('click', async () => {
+      const text = input.value.trim();
+      if (!text) {
+        statusMsg.textContent = "Type something first.";
+        statusMsg.classList.add('err');
+        return;
+      }
+      btn.disabled = true;
+      statusMsg.classList.remove('err');
+      statusMsg.textContent = "Sending…";
+      try {
+        await addDoc(collection(db, COLLECTION_NAME), {
+          text: text,
+          hidden: false,
+          timestamp: serverTimestamp()
+        });
+        input.value = "";
+        cc.textContent = "0";
+        statusMsg.textContent = "Sent! Send another anytime.";
+      } catch (e) {
+        console.error(e);
+        statusMsg.textContent = "Couldn't send — check connection and try again.";
+        statusMsg.classList.add('err');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) btn.click();
+    });
+  }
+
+  // ================= LIVE VIEW (projector) =================
+  function renderLive() {
+    document.getElementById('wrap').classList.add('live');
+    appEl.innerHTML = `
+      <h1 id="liveTitle">Suggested Lines <span class="count-badge" id="countBadge">0</span></h1>
+      <div class="sub" id="liveSub">Live — updates automatically as the audience submits.</div>
+      <div class="line-grid" id="grid"></div>
+    `;
+    const grid = document.getElementById('grid');
+    const countBadge = document.getElementById('countBadge');
+    const liveTitleEl = document.getElementById('liveTitle');
+    const liveSubEl = document.getElementById('liveSub');
+    let currentEventName = "Suggested Lines";
+
+    subscribeConfig((cfg) => {
+      currentEventName = cfg.eventName;
+      liveTitleEl.childNodes[0].nodeValue = cfg.eventName + " ";
+      liveSubEl.textContent = cfg.eventSub;
+    });
+
+    const q = query(
+      collection(db, COLLECTION_NAME),
+      where("hidden", "==", false),
+      orderBy("timestamp", "asc")
+    );
+
+    onSnapshot(q, (snap) => {
+      grid.innerHTML = "";
+      countBadge.textContent = snap.size;
+      snap.forEach(docSnap => {
+        const d = docSnap.data();
+        const tile = document.createElement('div');
+        tile.className = 'line-tile';
+        tile.textContent = d.text;
+        grid.appendChild(tile);
+      });
+    }, (err) => {
+      console.error(err);
+      grid.innerHTML = `<div class="status err">Couldn't load live list — check connection.</div>`;
+    });
+  }
+
+  // ================= ADMIN VIEW =================
+  function renderAdminLogin() {
+    appEl.innerHTML = `
+      <h1>Admin sign-in</h1>
+      <div class="sub">One shared login for the production team.</div>
+      <div class="card">
+        <input type="email" id="email" placeholder="Email" style="margin-bottom:10px;">
+        <input type="password" id="pw" placeholder="Password">
+        <div class="row">
+          <button class="primary" id="loginBtn">Sign in</button>
+        </div>
+        <div class="status" id="loginStatus"></div>
+      </div>
+    `;
+    document.getElementById('loginBtn').addEventListener('click', async () => {
+      const email = document.getElementById('email').value.trim();
+      const pw = document.getElementById('pw').value;
+      const statusMsg = document.getElementById('loginStatus');
+      statusMsg.classList.remove('err');
+      statusMsg.textContent = "Signing in…";
+      try {
+        await signInWithEmailAndPassword(auth, email, pw);
+        // onAuthStateChanged below will re-render into the admin panel
+      } catch (e) {
+        console.error(e);
+        statusMsg.textContent = "Sign-in failed — check email/password.";
+        statusMsg.classList.add('err');
+      }
+    });
+  }
+
+  async function renderAdminPanel(user) {
+    const cfg = await loadConfigOnce();
+    appEl.innerHTML = `
+      <h1>Admin <span class="count-badge" id="countBadge">0</span></h1>
+      <div class="sub">Signed in as ${escapeHtml(user.email)} &middot; <a class="linklike" id="signOutLink" href="#">Sign out</a></div>
+
+      <div class="card">
+        <div class="tiny" style="margin-bottom:8px;">EVENT SETTINGS &mdash; shown on the Submit and Live pages</div>
+        <input type="text" id="eventNameInput" placeholder="Event name" value="${escapeHtml(cfg.eventName)}" style="margin-bottom:10px;">
+        <input type="text" id="eventSubInput" placeholder="Subtitle / instructions" value="${escapeHtml(cfg.eventSub)}">
+        <div class="row">
+          <button class="primary" id="saveConfigBtn">Save</button>
+        </div>
+        <div class="status" id="configStatus"></div>
+      </div>
+
+      <div class="card" id="listCard"><div class="tiny">Loading…</div></div>
+    `;
+    document.getElementById('signOutLink').addEventListener('click', async (e) => {
+      e.preventDefault();
+      await signOut(auth);
+    });
+
+    document.getElementById('saveConfigBtn').addEventListener('click', async () => {
+      const nameVal = document.getElementById('eventNameInput').value.trim() || DEFAULT_EVENT_NAME;
+      const subVal = document.getElementById('eventSubInput').value.trim() || DEFAULT_EVENT_SUB;
+      const configStatus = document.getElementById('configStatus');
+      configStatus.classList.remove('err');
+      configStatus.textContent = "Saving…";
+      try {
+        await setDoc(configDocRef(), { eventName: nameVal, eventSub: subVal }, { merge: true });
+        configStatus.textContent = "Saved — Submit and Live pages update automatically.";
+      } catch (e) {
+        console.error(e);
+        configStatus.textContent = "Couldn't save — check connection.";
+        configStatus.classList.add('err');
+      }
+    });
+
+    const listCard = document.getElementById('listCard');
+    const countBadge = document.getElementById('countBadge');
+
+    const q = query(collection(db, COLLECTION_NAME), orderBy("timestamp", "asc"));
+
+    onSnapshot(q, (snap) => {
+      countBadge.textContent = snap.size;
+      listCard.innerHTML = "";
+      if (snap.empty) {
+        listCard.innerHTML = `<div class="tiny">No submissions yet.</div>`;
+        return;
+      }
+      snap.forEach(docSnap => {
+        const d = docSnap.data();
+        const row = document.createElement('div');
+        row.className = 'admin-row' + (d.hidden ? ' hidden-row' : '');
+        const txtHtml = d.hidden ? `<s>${escapeHtml(d.text)}</s>` : escapeHtml(d.text);
+        row.innerHTML = `
+          <div class="txt">${txtHtml}</div>
+          <button class="${d.hidden ? 'restore-btn' : 'hide-btn'}">${d.hidden ? 'Restore' : 'Hide'}</button>
+        `;
+        row.querySelector('button').addEventListener('click', async () => {
+          try {
+            await updateDoc(doc(db, COLLECTION_NAME, docSnap.id), { hidden: !d.hidden });
+          } catch (e) {
+            console.error(e);
+            alert("Couldn't update — check connection.");
+          }
+        });
+        listCard.appendChild(row);
+      });
+    }, (err) => {
+      console.error(err);
+      listCard.innerHTML = `<div class="status err">Couldn't load list — check connection.</div>`;
+    });
+  }
+
+  // ================= ROUTER =================
+  if (view === 'submit') {
+    renderSubmit();
+  } else if (view === 'live') {
+    renderLive();
+  } else if (view === 'admin') {
+    onAuthStateChanged(auth, (user) => {
+      if (user) renderAdminPanel(user);
+      else renderAdminLogin();
+    });
+  } else {
+    appEl.innerHTML = `<div class="status err">Unknown view. Use ?view=submit, ?view=live, or ?view=admin.</div>`;
+  }
+</script>
+</body>
+</html>
